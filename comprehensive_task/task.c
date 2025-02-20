@@ -16,7 +16,8 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int threads_number;
 atomic_int active_customer = 0;
 pthread_t customers[CUSTOMER];
-time_t pthreads_time[CUSTOMER];
+time_t pthreads_time[3] = {0};
+int number = 0;
 
 struct resturant_detail
 {
@@ -80,7 +81,8 @@ void *customer_task(void *args)
         sprintf(buff, "Customer  %d was waiting too long so left  ", d->thread_number);
         logger(buff);
     };
-    threads_number = d->thread_number;
+    threads_number = d->thread_number % 3;
+    pthreads_time[threads_number] = time(NULL);
     atomic_fetch_add(&active_customer, 1);
 
     int sl = rand() % 10;
@@ -95,6 +97,7 @@ void *customer_task(void *args)
         return NULL;
     }
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
     sleep(sl);
     pthread_cleanup_push(cleanup, details->semaphore);
 
@@ -114,7 +117,7 @@ void *check(void *args)
 
     while ((atomic_load(&active_customer)) > 0)
     {
-        for (int i = 0; i < CUSTOMER; i++)
+        for (int i = 0; i < number; i++)
         {
             time_t current_time = time(NULL);
             if ((current_time - pthreads_time[i]) > 5)
@@ -122,8 +125,16 @@ void *check(void *args)
                 char buff[200];
                 sprintf(buff, "CUSTOMER %d HAVE TAKEN MORE TIME THAN ALLOCATED SO THEY ARE BEING KICKED OUT \n", i);
                 logger(buff);
-                pthread_cancel(customers[i]);
+                if ((pthread_cancel(customers[i])) == 0)
+                {
+                    printf("the thread hvae been canceelled \n");
+                }
+                else
+                {
+                    printf("issue in teh thread cancellation \n");
+                };
             }
+            sleep(1);
         }
     }
     return NULL;
@@ -158,8 +169,8 @@ int main()
             struct threads_specific_data *datas = malloc(sizeof(*datas));
             datas->data = shared_details;
             datas->thread_number = i;
-            pthreads_time[i] = time(NULL);
-            if ((pthread_create(&customers[i], NULL, customer_task, &datas)) != 0)
+
+            if ((pthread_create(&customers[i], NULL, customer_task, datas)) != 0)
             {
                 printf("Error in creating the threads \n");
             }
